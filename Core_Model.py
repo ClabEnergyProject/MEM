@@ -60,7 +60,6 @@ var_cost (required if dispatch decision) real number
 
 import cvxpy as cvx
 import time
-import datetime
 import numpy as np
 
 
@@ -118,17 +117,18 @@ def core_model(global_dic, tech_list):
     capacity_dic = {} # dictionary of capacity decision variables
     dispatch_in_dic = {} # dictionary of dispatch decision variables for inflow to tech
     dispatch_out_dic = {} # dictionary of dispatch decision variables for inflow to tech
+    energy_stored_dic = {} # dictionary containing energy storage decision variables
     
     #loop through dics in tech_list
     for tech_dic in tech_list:
 
         tech_name = tech_dic['tech_name']
-        tech_names.append(tech_name)
         
         num_time_periods = tech_dic['num_time_periods']
         
         n_capacity = tech_dic['n_capacity'] # number of capacity decisions for this tech
-        n_dispatch = tech_dic['n_dispatch'] # number of dispatch decisions for this tech
+        n_dispatch_in = tech_dic['n_dispatch_in'] # number of dispatch decisions for this tech
+        n_dispatch_out = tech_dic['n_dispatch_out'] # number of dispatch decisions for this tech
         
         # check the input node
         node_in = tech_dic['node_in']
@@ -141,33 +141,33 @@ def core_model(global_dic, tech_list):
             if not node_out in node_balance.keys():
                 node_balance[node_out] = np.zeros(num_time_periods)
                 
-"""
-For the purposes of this routine, we will use a high level taxonomy based on
-the number of capacity decisions (one decision per simulation) and number of
-dispatch decisions (one decision per time step).
-
-Names shortened for table for space reasons.
-
-n_cap = n_capacity
-n_dis_in = n_dispatch_in
-n_dis_out = n_dispatch_out 
-
-n_cap   n_dis_in    n_dis_out   Notes
------   --------    ---------   -----
-0       0           0           Assumed to be demand, if series is available assume
-                                 it is energy sink else assume energy sink of 1 kW.
-0       0           1           Assumed to be unmet demand (lost load) with variable cost
-                                 Requires: <var_cost>
-0       1           0           Assumed to be generic curtailment.
-                                 Accepts: <var_cost>
-1       0           0           Assumed to be non-curtailable generator, if time series
-                                 is available, it will be assumed to be output per unit
-                                 capacity.
-1       0           1           Assumed to be curtailable generator. If time series is
-                                 available assumed to be maximum output per unit capacity.
-1       1           1           Assumed to be storage equivalent to a battery
-
-"""
+        """
+        For the purposes of this routine, we will use a high level taxonomy based on
+        the number of capacity decisions (one decision per simulation) and number of
+        dispatch decisions (one decision per time step).
+        
+        Names shortened for table for space reasons.
+        
+        n_cap = n_capacity
+        n_dis_in = n_dispatch_in
+        n_dis_out = n_dispatch_out 
+        
+        n_cap   n_dis_in    n_dis_out   Notes
+        -----   --------    ---------   -----
+        0       0           0           Assumed to be demand, if series is available assume
+                                         it is energy sink else assume energy sink of 1 kW.
+        0       0           1           Assumed to be unmet demand (lost load) with variable cost
+                                         Requires: <var_cost>
+        0       1           0           Assumed to be generic curtailment.
+                                         Accepts: <var_cost>
+        1       0           0           Assumed to be non-curtailable generator, if time series
+                                         is available, it will be assumed to be output per unit
+                                         capacity.
+        1       0           1           Assumed to be curtailable generator. If time series is
+                                         available assumed to be maximum output per unit capacity.
+        1       1           1           Assumed to be storage equivalent to a battery
+        
+        """
 
         #----------------------------------------------------------------------
         # demand (n_capacity = 0 and n_dispatch_in = 0 and n_dispatch_out = 0)
@@ -222,8 +222,9 @@ n_cap   n_dis_in    n_dis_out   Notes
                 dispatch_out = capacity * series
             else:
                 dispatch_out = capacity
+                
             capacity_dic[tech_name] = capacity
-            dispatch_out_dic[tech_name] = dispatch_out # NOTE: Not a decision variable
+            
             node_balance[node_out] += dispatch_out
             fnc2min += capacity * tech_dic['fixed_cost']
 
@@ -242,10 +243,13 @@ n_cap   n_dis_in    n_dis_out   Notes
                 constraints += [ dispatch_out <= capacity * tech_dic['series'] ]
             else:
                 constraints += [ dispatch_out <= capacity ]
+                
             capacity_dic[tech_name] = capacity
             dispatch_out_dic[tech_name] = dispatch_out
+            
             node_balance[node_out] = node_balance[node_out] + dispatch_out
-            fnc2min +=  cvx.sum(dispatch_out * tech_dic['var_cost'])/num_time_periods + capacity * tech_dic['fixed_cost']
+            fnc2min +=  cvx.sum(dispatch_out * tech_dic['var_cost'])/num_time_periods 
+            fnc2min += capacity * tech_dic['fixed_cost']
         
         #----------------------------------------------------------------------
         # Storage
@@ -260,7 +264,6 @@ n_cap   n_dis_in    n_dis_out   Notes
             dispatch_in = cvx.Variable(num_time_periods) 
             dispatch_out = cvx.Variable(num_time_periods)
             energy_stored = cvx.Variable(num_time_periods)
-            charging_time = 
             constraints += [ capacity >= 0 ]
             constraints += [ dispatch_in >= 0 ]
             constraints += [ dispatch_out >= 0 ]
@@ -284,18 +287,66 @@ n_cap   n_dis_in    n_dis_out   Notes
                     energy_stored[(i+1) % num_time_periods] ==
                         energy_stored[i] + round_trip_efficiency * dispatch_in[i]
                         - dispatch_out[i] - energy_stored[i]*decay_rate
+                        
+            capacity_dic[tech_name] = capacity
+            dispatch_in_dic[tech_name] = dispatch_in
+            dispatch_out_dic[tech_name] = dispatch_out
                     ]
             if 'var_cost' in tech_dic
                 fcn2min += cvx.sum(dispatch_out * tech_dic['var_cost'])/num_time_periods
             fnc2min += capacity * tech_dic['fixed_cost']
 
-        #----------------------------------------------------------------------
-        # end of loop to build up minimization function and constraints 
-        # Now work on solving the problem
+    # end of loop to build up minimization function and constraints 
+    #======================================================================
+    # Now solve the problem
+    
+    fcn2min_scaled = global_dic('numerics_scaling')*fnc2min
+    obj = cvx.Minimize(fcn2min_scaled)
+    prob = cvx.Problem(obj, constraints)
+    prob.solve(solver = 'GUROBI')
+
+    # problem is solved
+    #======================================================================
+    # Now hand back decision variables
+    # The decision variables will be handed back in a form that is
+    # similar to <tech_list>. A list of dictionaries
+    
+    decision_dic_list = []
+    for tech_dic in tech_list:
+        decision_dic = {}
         
-        obj = cvx.Minimize(fcn2min)
-        prob = cvx.Problem(obj, constraints)
-        prob.solve(solver = 'GUROBI')
+        tech_name = tech_dic['tech_name']        
+        n_capacity = tech_dic['n_capacity'] # number of capacity decisions for this tech
+        n_dispatch_in = tech_dic['n_dispatch_in'] # number of dispatch decisions for this tech
+        n_dispatch_out = tech_dic['n_dispatch_out'] # number of dispatch decisions for this tech
+
+        decision_dic['tech_name'] = tech_name
+        
+        if n_capacity == 1:
+            decision_dic['capacity'] = np.asscalar(capacity_dic[tech_name].value)
+        if n_dispatch_in == 1:
+            decision_dic['dispatch_in'] = np.array(dispatch_in_dic[tech_name].value).flatten()
+        if n_dispatch_out == 1:
+            decision_dic['dispatch_out'] = np.array(dispatch_out_dic[tech_name].value).flatten()
+        if n_capacity == 1 and n_dispatch_in == 1 and n_dispatch_out  == 1:
+            decision_dic['energy_stored'] = np.array(energy_stored_dic[tech_name].value).flatten()
+            
+        decision_dic_list += [decision_dic]
+        
+    #--------------------------------------------------------------------------
+    global_results_dic = {}
+    
+    global_results_dic['system_cost'] = np.asscalar(prob.value)/global_dic('numerics_scaling')
+    global_results_dic['problem_status'] = prob.status
+    end_time = time.time()
+    global_results_dic['runtime'] = end_time - start_time
+    
+    #==========================================================================
+    return global_results_dic, decision_dic_list
+    
+    
+            
+        
     
     
     
