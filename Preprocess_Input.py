@@ -19,7 +19,7 @@ It generates a result containing <case_dic> and <case_dic_list>
 
 import csv
 import numpy as np
-from utilities import dict_of_lists_to_list_of_dicts
+import utilities
 import datetime
 
 
@@ -38,7 +38,7 @@ def preprocess_input(case_input_path_filename):
     keywords_str = ['case_name','data_path','output_path',
                     'tech_name','tech_type','node','node_aux',
                     'series_file',
-                    'time_start','time_end']
+                    'time_start','time_end','notes']
 
     keywords_int = ['year_start','month_start','day_start','hour_start',
                     'year_end','month_end','day_end','hour_end']
@@ -51,9 +51,9 @@ def preprocess_input(case_input_path_filename):
     tech_keywords['curtailment'] = ['tech_name','tech_type','node','var_cost']
     tech_keywords['unmet_demand'] = ['tech_name','tech_type','node','var_cost']
     tech_keywords['generator'] = ['tech_name','tech_type','node','series_file','fixed_cost','var_cost']
-    tech_keywords['non-dispatchable_generator'] = ['tech_name','tech_type','node','series_file','fixed_cost']
+    tech_keywords['fixed_generator'] = ['tech_name','tech_type','node','series_file','fixed_cost']
+    tech_keywords['transfer'] = ['tech_name','tech_type','node','node_aux','fixed_cost','var_cost','efficiency']
     tech_keywords['transmission'] = ['tech_name','tech_type','node','node_aux','fixed_cost','var_cost','efficiency']
-    tech_keywords['bidirectional_transmission'] = ['tech_name','tech_type','node','node_aux','fixed_cost','var_cost','efficiency']
     tech_keywords['storage'] = ['tech_name','tech_type','node','fixed_cost','var_cost','efficiency','charging_time','decay_rate']
     
                                               

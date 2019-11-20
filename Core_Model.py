@@ -112,6 +112,7 @@ def core_model(case_dic, tech_list):
     # Initialize variables to be used later
     fnc2min = 0.0
     constraints = []
+    constraint_list = []
     node_balance = {} # dictionary of load balancing values; constrained to equal zero.
     # NOTE: node_names = node_balance.keys()     after this code runs.
     capacity_dic = {} # dictionary of capacity decision variables
@@ -126,12 +127,12 @@ def core_model(case_dic, tech_list):
     dispatch decisions (one decision per time step).
     
     <tech_type> is one of:
-        'non-dispatchable generator', 
+        'fixed_generator', 
         'generator', 
         'curtailment', 
         'unmet_demand', 
         'storage', or 
-        'transmission'
+        'transfer' (unidirectional) or 'transmission' (bidirectional)
 
     """
   
@@ -174,6 +175,7 @@ def core_model(case_dic, tech_list):
         elif tech_type == 'unmet_demand':
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ dispatch >= 0 ]
+            constraint_list += [tech_name + 'dispatch_ge_0']
             dispatch_dic[tech_name] = dispatch
             node_balance[node] += dispatch
             fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
@@ -186,6 +188,7 @@ def core_model(case_dic, tech_list):
         elif tech_type == 'curtailment':
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ dispatch >= 0 ]
+            constraint_list += [tech_name + 'dispatch_ge_0']
             dispatch_dic[tech_name] = - dispatch
             node_balance[node] += - dispatch
             if 'var_cost' in tech_dic: # if cost of curtailment
@@ -197,12 +200,13 @@ def core_model(case_dic, tech_list):
         # If time series is available, it will be assumed to be output per unit
         #  capacity.
         
-        elif tech_type == 'non-dispatchable generator':
+        elif tech_type == 'fixed_generator':
             capacity = cvx.Variable(1)
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ capacity >= 0 ]
+            constraint_list += [tech_name + 'capacity_ge_0']
             if 'series' in tech_dic:
-                dispatch = capacity * series
+                dispatch = capacity * tech_dic['series']
             else:
                 dispatch = capacity
                 
@@ -222,11 +226,15 @@ def core_model(case_dic, tech_list):
             capacity = cvx.Variable(1)
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ capacity >= 0 ]
+            constraint_list += [tech_name + ' capacity_ge_0']
             constraints += [ dispatch >= 0 ]
+            constraint_list += [tech_name + ' dispatch_ge_0']
             if 'series' in tech_dic:
                 constraints += [ dispatch <= capacity * tech_dic['series'] ]
+                constraint_list += [tech_name + ' dispatch_le_capacity_x_series']
             else:
                 constraints += [ dispatch <= capacity ]
+                constraint_list += [tech_name + ' dispatch_le_capacity']
                 
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
@@ -249,13 +257,20 @@ def core_model(case_dic, tech_list):
             dispatch = cvx.Variable(num_time_periods)
             energy_stored = cvx.Variable(num_time_periods)
             constraints += [ capacity >= 0 ]
+            constraint_list += [tech_name + ' capacity_ge_0']
             constraints += [ dispatch_in >= 0 ]
+            constraint_list += [tech_name + ' dispatch_in_ge_0']
             constraints += [ dispatch >= 0 ]
+            constraint_list += [tech_name + ' dispatch_ge_0']
             constraints += [ energy_stored >= 0 ]
+            constraint_list += [tech_name + ' energy_stored_ge_0']
             constraints += [ energy_stored <= capacity ]
+            constraint_list += [tech_name + ' energy_stored_le_capacity']
             if 'charging_time' in tech_dic:
                 constraints += [ dispatch_in  <= capacity / charging_time_storage ]
+                constraint_list += [tech_name + ' dispatch_in_le_charging_rate']
                 constraints += [ dispatch <= capacity / charging_time_storage ]
+                constraint_list += [tech_name + ' dispatch_le_discharge_rate']
             if 'decay_rate' in tech_dic:
                 decay_rate = tech_dic['decay_rate']
             else:
@@ -272,6 +287,7 @@ def core_model(case_dic, tech_list):
                         energy_stored[i] + efficiency * dispatch_in[i]
                         - dispatch[i] - energy_stored[i]*decay_rate
                         ]
+                constraint_list += [tech_name + ' storage_balance_step_'+str(i).zfill(5)]
                         
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
@@ -282,16 +298,19 @@ def core_model(case_dic, tech_list):
             fnc2min += capacity * tech_dic['fixed_cost']
         
         #----------------------------------------------------------------------
-        # Transmission (directional)
+        # Transmission  or concerion (directional)
         # (n_capacity = 1 and n_dispatch = 1)
         # Assumed to be unidirectional for simplicity !!!
         
-        elif tech_type == 'transmission':
+        elif tech_type == 'transfer':
             capacity = cvx.Variable(1)
             dispatch = cvx.Variable(num_time_periods)
             constraints += [ capacity >= 0 ]
+            constraint_list += [tech_name + ' capacity_ge_0']
             constraints += [ dispatch >= 0 ]
+            constraint_list += [tech_name + ' dispatch_ge_0']
             constraints += [ dispatch <= capacity ]
+            constraint_list += [tech_name + ' dispatch_le_capacity']
                                         
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
@@ -313,15 +332,20 @@ def core_model(case_dic, tech_list):
         # (n_capacity = 1 and n_dispatch = 1)
         # Assumed to be unidirectional for simplicity !!!
         
-        elif tech_type == 'bidirectional_transmission':
+        elif tech_type == 'transmission':
             capacity = cvx.Variable(1)
             dispatch = cvx.Variable(num_time_periods)
             dispatch_reverse = cvx.Variable(num_time_periods)
             constraints += [ capacity >= 0 ]
+            constraint_list += [tech_name + ' capacity_ge_0']
             constraints += [ dispatch >= 0 ]
+            constraint_list += [tech_name + ' dispatch_ge_0']
             constraints += [ dispatch_reverse >= 0 ]
+            constraint_list += [tech_name + ' dispatch_ge_0_rev']
             constraints += [ dispatch <= capacity ]
+            constraint_list += [tech_name + ' dispatch_le_capacity']
             constraints += [ dispatch_reverse <= capacity ]
+            constraint_list += [tech_name + ' capacity_ge_0']
                                         
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
@@ -349,6 +373,7 @@ def core_model(case_dic, tech_list):
     
     for node in node_balance:
         constraints += [ 0 == node_balance[node] ]
+        constraint_list += [node + ' balance']
         
     #%%======================================================================
     # Now solve the problem
@@ -405,7 +430,7 @@ def core_model(case_dic, tech_list):
         print ('    elapsed time = ',end_time - start_time)
 
             
-    return constraints,prob,capacity_dic,dispatch_dic    
+    return constraint_list,constraints,prob,capacity_dic,dispatch_dic    
     
     
     

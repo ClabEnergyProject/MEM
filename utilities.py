@@ -47,3 +47,18 @@ def list_of_dicts_to_dict_of_lists(list_of_dicts):
 
 def unique_list_of_lists(lol):
     return set(x for item in lol for x in item)
+
+#%%
+
+def get_nodes(tech_list):
+    
+    node_list = []
+    for item in tech_list:
+        node = item['node']
+        if not node in node_list:
+            node_list += [node]
+        if 'node_aux' in item:
+            node_aux = item['node_aux']
+            if not node_aux in tech_list:
+                node_list += [node_aux]
+    return node_list

@@ -14,10 +14,12 @@
   
 '''
 
-from Core_Model import core_model
 from Preprocess_Input import preprocess_input
-from Save_Basic_Results import save_basic_results
 
+from Core_Model import core_model
+from Extract_Cvxpy_Output import extract_cvxpy_output
+from Save_Basic_Results import save_basic_results
+import sys
 
 from shutil import copy2
 import os
@@ -57,10 +59,14 @@ except:
 
 print ('Macro_Energy_Model: Executing core model')
 #global_results_dic, decision_dic_list = core_model (case_dic, tech_list)
-constraints,prob,capacity_dic,dispatch_dic    = core_model (case_dic, tech_list)
+constraint_list,cvxpy_constraints,cvxpy_prob,cvxpy_capacity_dic,cvxpy_dispatch_dic    = core_model (case_dic, tech_list)
+
+# constraints,prob,capacity_dic,dispatch_dic = extract_cvxpy_output(cvxpy_constraints,cvxpy_prob,cvxpy_capacity_dic,cvxpy_dispatch_dic )
+prob_dic,capacity_dic,dispatch_dic = extract_cvxpy_output(case_dic,tech_list,constraint_list,
+                cvxpy_constraints,cvxpy_prob,cvxpy_capacity_dic,cvxpy_dispatch_dic )
 
 print ('Simple_Energy_Model: Saving basic results')
 # Note that results for individual cases are output from core_model_loop
-save_basic_results(case_dic, tech_list, constraints,prob,capacity_dic,dispatch_dic)
+save_basic_results(case_dic, tech_list, constraints,prob_dic,capacity_dic,dispatch_dic)
 
  

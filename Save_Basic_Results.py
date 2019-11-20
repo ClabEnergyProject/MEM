@@ -18,56 +18,103 @@ import csv
 import datetime
 import contextlib
 import pickle
-from utilities import list_of_dicts_to_dict_of_lists, unique_list_of_lists
+import utilities
 import cvxpy
+import pandas as pd
 
        
 #%%
 # save scalar results for all cases
-def save_basic_results(case_dic, tech_list, constraints,prob,capacity_dic,dispatch_dic):
+def save_basic_results(case_dic, tech_list, constraints,prob_dic,capacity_dic,dispatch_dic):
     
-    verbose = case_dic['verbose']
+    """
+    Save scalar information to csv/excel file, one column per technology, one field per row
+    -- Begin with case dependent information duplicated for each row.
+    -- Include values from tech_list where values are scalars, take means where values are vectors
+    -- Include values from capacity_dic, dispatch_dic, and prob, taking means where values are vectors.
+    
+    Save vector information to csv/excel file, one column per field, one row per time step.
+    -- question regarding how best to format headers.
+    
+    """
+    
+    #--------------------------------------------------------------------------
+    # Save scalar data
+    
+    case_df = pd.DataFrame([case_dic for item in tech_list]) # replicate case_dic so it is like a list dictionaries
+    
+    prob_df = pd.DataFrame([prob_dic for item in tech_list]) # replicate case_dic so it is like a list dictionaries
+    
+    tech_df = pd.DataFrame(map(meanify,tech_list))
+    
+    cap_df = pd.DataFrame(capacity_dic).T
+    
+
+
+# take mean if vector else return value
+def meanify(dic_in):
+    dic_out = copy.deepcopy(dic_in)
+    for item in dic_out:
+        if np.ndarray == type(dic_out[item]):
+            dic_out[item] = np.average(dic_out[item])
+    return dic_out
+
+    
+#%%    verbose = case_dic['verbose']
     
     # conert everything to numpy arrays
     
-    case_scalar_output_dic = copy.deepcopy(capacity_dic)
-    case_vector_output_dic = copy.deepcopy(dispatch_dic)
+    # case_scalar_output_dic = copy.deepcopy(capacity_dic)
+    # case_vector_output_dic = copy.deepcopy(dispatch_dic)
+    
+    case_scalar_output_dic = {}
+    case_vector_output_dic = {}
     
     scalar_header_list = []
     scalar_values_list = []
+    scalar_node_list = []
+    scalar_node_aux_list = []
         
     vector_header_list = []
     vector_values_list = []
+    vector_node_list = []
+    vector_node_aux_list = []
     
-    for item in capacity_dic:
-        val = case_scalar_output_dic[item]
-        if type(val) ==  cvxpy.expressions.variable.Variable:
-            case_scalar_output_dic[item] = [case_scalar_output_dic[item].value]
     
     for item in case_dic:
         scalar_header_list += [item]
-        scalar_values_list += [case_dic[item]]
-    
+        scalar_values_list += [[case_dic[item]]]
+        scalar_node_list += ["All"]
+
     for item in tech_list:
         scalar_header_list += [item]
         for key in item:
-            scalar_header_list += [item['node'] + '-' + key]
+            scalar_header_list += [key]
+            scalar_node_list += [item['node']]
             if key == 'series':
                 scalar_values_list += [np.average(item['series'])]
                 vector_header_list += [item['tech_name']+'-'+key]
                 vector_values_list += [item[key]]
             else:
                 scalar_values_list += [item[key]]
-   
-    for item in case_vector_output_dic:
-        val = case_vector_output_dic[item]
-        if type(val) ==  cvxpy.expressions.variable.Variable:
-            case_scalar_output_dic[item] = [np.average(case_vector_output_dic[item].value)]
-    
-    for item in case_scalar_output_dic:
-        scalar_header_list += [item]
-        scalar_values_list += [case_scalar_output_dic[item]]
 
+    for item in capacity_dic:
+        val = capacity_dic[item]
+        if type(val) ==  cvxpy.expressions.variable.Variable:
+            case_scalar_output_dic[item] = [capacity_dic[item].value]
+       
+    for item in dispatch_dic:
+        val = dispatch_dic[item]
+        if type(val) ==  cvxpy.expressions.variable.Variable:
+            case_scalar_output_dic[item] = [np.average(dispatch_dic[item].value)]
+    
+    node_price = prob['node_rice']
+    node_list = utilities.get_nodes(tech_list)
+    
+    for node in node_list:
+        vector_header_list += [node + ' price']
+        vector_values_list += [node_price[node]]
+    
     
     for item in case_vector_output_dic:
         vector_header_list += [item]
@@ -107,7 +154,8 @@ def save_basic_results(case_dic, tech_list, constraints,prob,capacity_dic,dispat
     if verbose: 
         print ( 'file written: ' + output_file_name + '.csv')
         
-    
+
+        
     #%% output vector information
     case_vector_output_dic = copy.deepcopy(dispatch_dic)
         
@@ -123,7 +171,7 @@ def save_basic_results(case_dic, tech_list, constraints,prob,capacity_dic,dispat
         if type(val) ==  cvxpy.expressions.variable.Variable:
             case_vector_output_dic[item] = case_vector_output_dic[item].value
             case_scalar_output_dic[item] = np.average(case_vector_output_dic[item])
-   
+       
     
     output_vector_array = np.array(vector_values_list).T.tolist()
     output_vector_array.insert(0,vector_header_list)    
@@ -148,6 +196,14 @@ def save_basic_results(case_dic, tech_list, constraints,prob,capacity_dic,dispat
         
     if verbose: 
         print ( 'file written: ' + output_file_name + '.csv')
+
+#%%
+def robust_dic(dic, key):
+    if key in dic:
+        res = dic[key]
+    else:
+        res = ""  # Default value if missing key
+    return res
 
 
 #%%
