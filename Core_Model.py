@@ -130,7 +130,7 @@ def core_model(case_dic, tech_list):
         'fixed_generator', 
         'generator', 
         'curtailment', 
-        'unmet_demand', 
+        'lost_load', 
         'storage', or 
         'transfer' (unidirectional) or 'transmission' (bidirectional)
 
@@ -172,10 +172,10 @@ def core_model(case_dic, tech_list):
         # (n_capacity = 0 and n_dispatch = 0 and n_dispatch = 1)
         # Assumed to be unmet demand (lost load) with variable cost
         
-        elif tech_type == 'unmet_demand':
+        elif tech_type == 'lost_load':
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ dispatch >= 0 ]
-            constraint_list += [tech_name + 'dispatch_ge_0']
+            constraint_list += [tech_name + ' dispatch_ge_0']
             dispatch_dic[tech_name] = dispatch
             node_balance[node] += dispatch
             fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
@@ -188,7 +188,7 @@ def core_model(case_dic, tech_list):
         elif tech_type == 'curtailment':
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ dispatch >= 0 ]
-            constraint_list += [tech_name + 'dispatch_ge_0']
+            constraint_list += [tech_name + ' dispatch_ge_0']
             dispatch_dic[tech_name] = - dispatch
             node_balance[node] += - dispatch
             if 'var_cost' in tech_dic: # if cost of curtailment
@@ -204,7 +204,7 @@ def core_model(case_dic, tech_list):
             capacity = cvx.Variable(1)
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ capacity >= 0 ]
-            constraint_list += [tech_name + 'capacity_ge_0']
+            constraint_list += [tech_name + ' capacity_ge_0']
             if 'series' in tech_dic:
                 dispatch = capacity * tech_dic['series']
             else:
@@ -398,7 +398,7 @@ def core_model(case_dic, tech_list):
 #        decision_dic['tech_name'] = tech_name
 #        
 #        if tech_type is 'non-dispatchable generator':
-#            'non-dispatchable generator', 'generator', 'curtailment', 'unmet_demand', 'storage',  'transmission', or 'bidirectional_transmission'
+#            'non-dispatchable generator', 'generator', 'curtailment', 'lost_load', 'storage',  'transmission', or 'bidirectional_transmission'
 #            'generator', 
 #                         'storage',  'transmission', 'bidirectional_transmission']:
 #            decision_dic['capacity'] = np.asscalar(capacity_dic[tech_name].value)

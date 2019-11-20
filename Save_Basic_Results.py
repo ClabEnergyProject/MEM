@@ -39,101 +39,83 @@ def save_basic_results(case_dic, tech_list, constraints,prob_dic,capacity_dic,di
     """
     
     #--------------------------------------------------------------------------
-    # Save scalar data
     
-    case_df = pd.DataFrame([case_dic for item in tech_list]) # replicate case_dic so it is like a list dictionaries
+    # generate scalar outputs per case
+    case_output_dic = {} # one scalar item per element per case
     
-    prob_df = pd.DataFrame([prob_dic for item in tech_list]) # replicate case_dic so it is like a list dictionaries
-    
-    tech_df = pd.DataFrame(map(meanify,tech_list))
-    
-    cap_df = pd.DataFrame(capacity_dic).T
-    
-
-
-# take mean if vector else return value
-def meanify(dic_in):
-    dic_out = copy.deepcopy(dic_in)
-    for item in dic_out:
-        if np.ndarray == type(dic_out[item]):
-            dic_out[item] = np.average(dic_out[item])
-    return dic_out
-
-    
-#%%    verbose = case_dic['verbose']
-    
-    # conert everything to numpy arrays
-    
-    # case_scalar_output_dic = copy.deepcopy(capacity_dic)
-    # case_vector_output_dic = copy.deepcopy(dispatch_dic)
-    
-    case_scalar_output_dic = {}
-    case_vector_output_dic = {}
-    
-    scalar_header_list = []
-    scalar_values_list = []
-    scalar_node_list = []
-    scalar_node_aux_list = []
+    for key in case_dic:
+        case_output_dic[key] = case_dic[key]
         
-    vector_header_list = []
-    vector_values_list = []
-    vector_node_list = []
-    vector_node_aux_list = []
+    temp_dic = flatten_dic(meanify(prob_dic))
+    for key in temp_dic:
+        case_output_dic[key] = temp_dic[key]
+   
+    #--------------------------------------------------------------------------
     
+    tech_output_dic_list = list(map(meanify,tech_list))
     
-    for item in case_dic:
-        scalar_header_list += [item]
-        scalar_values_list += [[case_dic[item]]]
-        scalar_node_list += ["All"]
-
+    for i in range(len(tech_output_dic_list)):
+        dic_sub = tech_output_dic_list[i]
+        tech_name = dic_sub['tech_name']
+        if 'series' in dic_sub:
+            dic_sub[tech_name + ' series'] = np.average(dic_sub['series'])
+        if dic_sub['tech_name'] in capacity_dic:
+            dic_sub[tech_name + ' capacity'] = capacity_dic[dic_sub['tech_name']]
+        if dic_sub['tech_name'] in dispatch_dic:
+            dic_sub[tech_name + ' dispatch'] = np.average(dispatch_dic[dic_sub['tech_name']])
+        tech_output_dic_list[i] = dic_sub
+            
+  
+    #--------------------------------------------------------------------------
+    
+    num_time_periods = case_dic['num_time_periods']
+    time_output_dic = {} # one time vector per keyword
+    time_output_dic['time_index'] = np.array(range(num_time_periods))
     for item in tech_list:
-        scalar_header_list += [item]
-        for key in item:
-            scalar_header_list += [key]
-            scalar_node_list += [item['node']]
-            if key == 'series':
-                scalar_values_list += [np.average(item['series'])]
-                vector_header_list += [item['tech_name']+'-'+key]
-                vector_values_list += [item[key]]
-            else:
-                scalar_values_list += [item[key]]
-
-    for item in capacity_dic:
-        val = capacity_dic[item]
-        if type(val) ==  cvxpy.expressions.variable.Variable:
-            case_scalar_output_dic[item] = [capacity_dic[item].value]
-       
+        tech_name = item['tech_name']
+        if 'series' in item:
+            time_output_dic[tech_name + ' series'] = item['series']
+    node_price_dic = prob_dic['node_price']
+    for node in node_price_dic:
+        time_output_dic[node+' price'] = node_price_dic[node]
     for item in dispatch_dic:
-        val = dispatch_dic[item]
-        if type(val) ==  cvxpy.expressions.variable.Variable:
-            case_scalar_output_dic[item] = [np.average(dispatch_dic[item].value)]
+        time_output_dic[item] = dispatch_dic[item]
+
+    #--------------------------------------------------------------------------
     
-    node_price = prob['node_rice']
-    node_list = utilities.get_nodes(tech_list)
+    case_df = pd.DataFrame(list(case_output_dic.items()))
+    tech_df = pd.DataFrame(tech_output_dic_list)
+    time_df = pd.DataFrame(time_output_dic)
     
-    for node in node_list:
-        vector_header_list += [node + ' price']
-        vector_values_list += [node_price[node]]
+    output_path = case_dic['output_path']
+    case_name = case_dic['case_name']
+    output_folder = output_path + "/" + case_name
+    today = datetime.datetime.now()
+    todayString = str(today.year) + str(today.month).zfill(2) + str(today.day).zfill(2) + '-' + \
+        str(today.hour).zfill(2) + str(today.minute).zfill(2) + str(today.second).zfill(2)
     
+    output_file_name = case_name + '_vector_' + todayString
+    output_file_path_name = output_folder + "/" + output_file_name + '.xlsx'
     
-    for item in case_vector_output_dic:
-        vector_header_list += [item]
-        vector_values_list += [case_vector_output_dic[item]]        
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
     
-    for item in case_vector_output_dic:
-        val = case_vector_output_dic[item]
-        if type(val) ==  cvxpy.expressions.variable.Variable:
-            case_vector_output_dic[item] = case_vector_output_dic[item].value
-            if type(case_vector_output_dic[item])== cvxpy.expressions.variable.Variable:
-                case_scalar_output_dic[item] = np.average(case_vector_output_dic[item].value)
-            else:
-                case_scalar_output_dic[item] = np.average(case_vector_output_dic[item])
-    output_scalar_array = np.array(scalar_values_list).T.tolist()
-    output_scalar_array.insert(0,scalar_header_list)    
-    output_scalar_array = np.array(output_scalar_array).T.tolist()
+    writer = pd.ExcelWriter(output_file_path_name, engine = 'xlsxwriter')
+    case_df.to_excel(writer, sheet_name = 'case')  
+    tech_df.to_excel(writer, sheet_name = 'tech')
+    time_df.to_excel(writer, sheet_name = 'time') 
+    writer.save()
     
-    print (output_scalar_array)
+    verbose = case_dic['verbose']       
+    if verbose: 
+        print ( 'file written: ' + output_file_path_name )
     
+    return case_output_dic,tech_output_dic_list,time_output_dic
+
+    
+#%%    
+    
+def temp():
     output_path = case_dic['output_path']
     case_name = case_dic['case_name']
     output_folder = output_path + "/" + case_name
@@ -151,32 +133,14 @@ def meanify(dic_in):
         writer.writerows(output_scalar_array)
         output_file.close()
         
+ 
     if verbose: 
         print ( 'file written: ' + output_file_name + '.csv')
         
 
         
     #%% output vector information
-    case_vector_output_dic = copy.deepcopy(dispatch_dic)
-        
-    vector_header_list = []
-    vector_values_list = []
-    
-    for item in case_vector_output_dic:
-        vector_header_list += item
-        vector_values_list += [case_vector_output_dic[item] ]       
-    
-    for item in case_vector_output_dic:
-        val = case_vector_output_dic[item]
-        if type(val) ==  cvxpy.expressions.variable.Variable:
-            case_vector_output_dic[item] = case_vector_output_dic[item].value
-            case_scalar_output_dic[item] = np.average(case_vector_output_dic[item])
-       
-    
-    output_vector_array = np.array(vector_values_list).T.tolist()
-    output_vector_array.insert(0,vector_header_list)    
-    output_vector_array = np.array(output_vector_array).T.tolist()
-    
+     
     output_path = case_dic['output_path']
     case_name = case_dic['case_name']
     output_folder = output_path + "/" + case_name
@@ -196,6 +160,31 @@ def meanify(dic_in):
         
     if verbose: 
         print ( 'file written: ' + output_file_name + '.csv')
+
+#%%
+# flatten dictionary of dictionaries to dictionary (1 level)
+def flatten_dic(dic_in):
+    dic_out = {}
+    for item in dic_in:
+        if dict != type(dic_in[item]):
+            dic_out[item] = dic_in[item]
+        else: # type is dict
+            for sub_item in dic_in[item]:
+                dic_out[item + ' ' + sub_item ] = dic_in[item][sub_item]
+    return dic_out
+    
+
+#%%
+# take mean if vector else return value
+        
+def meanify(dic_in):
+    dic_out = copy.deepcopy(dic_in)
+    for item in dic_out:
+        if np.ndarray == type(dic_out[item]):
+            dic_out[item] = np.average(dic_out[item])
+        elif dict == type(dic_out[item]):
+            dic_out[item] = meanify(dic_out[item])
+    return dic_out
 
 #%%
 def robust_dic(dic, key):

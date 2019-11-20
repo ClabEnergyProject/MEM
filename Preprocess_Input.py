@@ -49,7 +49,7 @@ def preprocess_input(case_input_path_filename):
     tech_keywords = {}
     tech_keywords['demand'] = ['tech_name','tech_type','node','series_file']
     tech_keywords['curtailment'] = ['tech_name','tech_type','node','var_cost']
-    tech_keywords['unmet_demand'] = ['tech_name','tech_type','node','var_cost']
+    tech_keywords['lost_load'] = ['tech_name','tech_type','node','var_cost']
     tech_keywords['generator'] = ['tech_name','tech_type','node','series_file','fixed_cost','var_cost']
     tech_keywords['fixed_generator'] = ['tech_name','tech_type','node','series_file','fixed_cost']
     tech_keywords['transfer'] = ['tech_name','tech_type','node','node_aux','fixed_cost','var_cost','efficiency']
