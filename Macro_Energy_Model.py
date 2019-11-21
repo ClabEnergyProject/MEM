@@ -67,6 +67,6 @@ prob_dic,capacity_dic,dispatch_dic = extract_cvxpy_output(case_dic,tech_list,con
 
 print ('Simple_Energy_Model: Saving basic results')
 # Note that results for individual cases are output from core_model_loop
-case,tech,time = save_basic_results(case_dic, tech_list, constraints,prob_dic,capacity_dic,dispatch_dic)
+case,tech,time = save_basic_results(case_dic, tech_list, cvxpy_constraints,prob_dic,capacity_dic,dispatch_dic)
 
  

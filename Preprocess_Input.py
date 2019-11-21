@@ -36,7 +36,7 @@ def preprocess_input(case_input_path_filename):
     keywords_logical = ['verbose']
     
     keywords_str = ['case_name','data_path','output_path',
-                    'tech_name','tech_type','node','node_aux',
+                    'tech_name','tech_type','node_to','node_from',
                     'series_file',
                     'time_start','time_end','notes']
 
@@ -47,14 +47,14 @@ def preprocess_input(case_input_path_filename):
                      'efficiency','decay_rate']
             
     tech_keywords = {}
-    tech_keywords['demand'] = ['tech_name','tech_type','node','series_file']
-    tech_keywords['curtailment'] = ['tech_name','tech_type','node','var_cost']
-    tech_keywords['lost_load'] = ['tech_name','tech_type','node','var_cost']
-    tech_keywords['generator'] = ['tech_name','tech_type','node','series_file','fixed_cost','var_cost']
-    tech_keywords['fixed_generator'] = ['tech_name','tech_type','node','series_file','fixed_cost']
-    tech_keywords['transfer'] = ['tech_name','tech_type','node','node_aux','fixed_cost','var_cost','efficiency']
-    tech_keywords['transmission'] = ['tech_name','tech_type','node','node_aux','fixed_cost','var_cost','efficiency']
-    tech_keywords['storage'] = ['tech_name','tech_type','node','fixed_cost','var_cost','efficiency','charging_time','decay_rate']
+    tech_keywords['demand'] = ['tech_name','tech_type','node_from','series_file']
+    tech_keywords['curtailment'] = ['tech_name','tech_type','node_from','var_cost']
+    tech_keywords['lost_load'] = ['tech_name','tech_type','node_to','var_cost']
+    tech_keywords['generator'] = ['tech_name','tech_type','node_to','series_file','fixed_cost','var_cost']
+    tech_keywords['fixed_generator'] = ['tech_name','tech_type','node_to','series_file','fixed_cost']
+    tech_keywords['transfer'] = ['tech_name','tech_type','node_to','node_from','fixed_cost','var_cost','efficiency']
+    tech_keywords['transmission'] = ['tech_name','tech_type','node_to','node_from','fixed_cost','var_cost','efficiency']
+    tech_keywords['storage'] = ['tech_name','tech_type','node_to','node_from','fixed_cost','var_cost','efficiency','charging_time','decay_rate']
     
                                               
 #%% 

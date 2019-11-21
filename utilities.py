@@ -54,11 +54,12 @@ def get_nodes(tech_list):
     
     node_list = []
     for item in tech_list:
-        node = item['node']
-        if not node in node_list:
-            node_list += [node]
-        if 'node_aux' in item:
-            node_aux = item['node_aux']
-            if not node_aux in tech_list:
-                node_list += [node_aux]
+        if 'node_to' in item:
+            node = item['node_to']
+            if not node in node_list:
+                node_list += [node]
+        if 'node_from' in item:
+            node = item['node_from']
+            if not node in tech_list:
+                node_list += [node]
     return node_list

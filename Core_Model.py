@@ -51,7 +51,7 @@ Keywords in tech_dic are
 
 tech_name (required) character string name of technology
 node (optional) character string name of node
-node_aux (optional) character string name of node
+node_from (optional) character string name of node
 fixed_cost (required if capacity decision) real number
 var_cost (required if dispatch decision) real number
 
@@ -77,28 +77,7 @@ The former approach will accomodate flexibility whereas the latter approach
 may promote simplicity. In either case, this structure should accomodate both
 approaches.
 
-Here is the basic logic:
-    
-Names shortened for table for space reasons.
 
-n_cap = n_capacity
-n_dis_in = n_dispatch_in
-n_dis_out = n_dispatch 
-
-n_cap   n_dis_in    n_dis_out   Notes
------   --------    ---------   -----
-0       0           0           Assumed to be demand, if series is available assume
-                                 it is energy sink else assume energy sink of 1 kW.
-0       0           1           Assumed to be unmet demand (lost load) with variable cost
-                                 Requires: <var_cost>
-0       1           0           Assumed to be generic curtailment.
-                                 Accepts: <var_cost>
-1       0           0           Assumed to be non-curtailable generator, if time series
-                                 is available, it will be assumed to be output per unit
-                                 capacity.
-1       0           1           Assumed to be curtailable generator. If time series is
-                                 available assumed to be maximum output per unit capacity.
-1       1           1           Assumed to be storage equivalent to a battery
 
 """
 #%% Define main code for Core_Model
@@ -117,7 +96,6 @@ def core_model(case_dic, tech_list):
     # NOTE: node_names = node_balance.keys()     after this code runs.
     capacity_dic = {} # dictionary of capacity decision variables
     dispatch_dic = {} # dictionary of dispatch decision variables for inflow to tech
-    dispatch_aux_dic = {} # dictionary of dispatch decision variables for inflow to tech
     
     num_time_periods = case_dic['num_time_periods']
                   
@@ -142,16 +120,17 @@ def core_model(case_dic, tech_list):
         tech_name = tech_dic['tech_name']
         tech_type = tech_dic['tech_type']
         
-        # check the input node
-        node = tech_dic['node']
-        if not node in node_balance.keys():
-            node_balance[node] = np.zeros(num_time_periods)
+        # check the input node_to
+        if 'node_to' in tech_dic:
+            node_to = tech_dic['node_to']
+            if not node_to in node_balance.keys():
+                node_balance[node_to] = np.zeros(num_time_periods)
         
         # check the output node
-        if 'node_aux' in tech_dic:
-            node_aux = tech_dic['node_aux']
-            if node_aux in node_balance.keys():
-                node_balance[node_aux] = np.zeros(num_time_periods)
+        if 'node_from' in tech_dic:
+            node_from = tech_dic['node_from']
+            if not node_from in node_balance.keys():
+                node_balance[node_from] = np.zeros(num_time_periods)
 
         #----------------------------------------------------------------------
         # demand (n_capacity = 0 and n_dispatch = 0 and n_dispatch = 0)
@@ -163,9 +142,9 @@ def core_model(case_dic, tech_list):
                 dispatch = tech_dic['series']
             else:
                 dispatch = np.ones(num_time_periods)
-            dispatch_dic[tech_name] = - dispatch
+            dispatch_dic[tech_name] = dispatch
             # note that dispatch from a node is regarded as negative influence on that node
-            node_balance[node] += - dispatch
+            node_balance[node_from] += - dispatch
 
         #----------------------------------------------------------------------
         # unmet demand 
@@ -177,8 +156,8 @@ def core_model(case_dic, tech_list):
             constraints += [ dispatch >= 0 ]
             constraint_list += [tech_name + ' dispatch_ge_0']
             dispatch_dic[tech_name] = dispatch
-            node_balance[node] += dispatch
-            fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
+            node_balance[node_to] += dispatch # note that lost load is like a phantom source of pure variable capacity
+            fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])
 
         #----------------------------------------------------------------------
         # generic curtailment
@@ -189,10 +168,10 @@ def core_model(case_dic, tech_list):
             dispatch = cvx.Variable(num_time_periods) 
             constraints += [ dispatch >= 0 ]
             constraint_list += [tech_name + ' dispatch_ge_0']
-            dispatch_dic[tech_name] = - dispatch
-            node_balance[node] += - dispatch
+            dispatch_dic[tech_name] = dispatch
+            node_balance[node_from] += - dispatch
             if 'var_cost' in tech_dic: # if cost of curtailment
-                fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
+                fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])
                 
         #----------------------------------------------------------------------
         # non-curtailable generator 
@@ -213,8 +192,8 @@ def core_model(case_dic, tech_list):
             capacity_dic[tech_name] = capacity
             
             dispatch_dic[tech_name] = dispatch
-            node_balance[node] += dispatch
-            fnc2min += capacity * tech_dic['fixed_cost']
+            node_balance[node_to] += dispatch
+            fnc2min += capacity * tech_dic['fixed_cost'] * num_time_periods
 
         #----------------------------------------------------------------------
         # curtailable generator
@@ -239,9 +218,9 @@ def core_model(case_dic, tech_list):
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
             
-            node_balance[node] += dispatch
-            fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods 
-            fnc2min += capacity * tech_dic['fixed_cost']
+            node_balance[node_to] += dispatch
+            fnc2min +=  cvx.sum(dispatch * tech_dic['var_cost']) 
+            fnc2min += capacity * tech_dic['fixed_cost'] * num_time_periods
         
         #----------------------------------------------------------------------
         # Storage
@@ -267,9 +246,9 @@ def core_model(case_dic, tech_list):
             constraints += [ energy_stored <= capacity ]
             constraint_list += [tech_name + ' energy_stored_le_capacity']
             if 'charging_time' in tech_dic:
-                constraints += [ dispatch_in  <= capacity / charging_time_storage ]
+                constraints += [ dispatch_in  <= capacity / tech_dic['charging_time'] ]
                 constraint_list += [tech_name + ' dispatch_in_le_charging_rate']
-                constraints += [ dispatch <= capacity / charging_time_storage ]
+                constraints += [ dispatch <= capacity / tech_dic['charging_time'] ]
                 constraint_list += [tech_name + ' dispatch_le_discharge_rate']
             if 'decay_rate' in tech_dic:
                 decay_rate = tech_dic['decay_rate']
@@ -291,11 +270,16 @@ def core_model(case_dic, tech_list):
                         
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
-            dispatch_aux_dic[tech_name] = -dispatch_in
-                    
+            dispatch_dic[tech_name+' in'] = dispatch_in
+            
+            node_balance[node_to] += dispatch
+            if 'node_from' in tech_dic:
+                node_balance[node_from] += -dispatch_in
+            else:
+                node_balance[node_to ] += -dispatch_in
             if 'var_cost' in tech_dic:
-                fnc2min += cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
-            fnc2min += capacity * tech_dic['fixed_cost']
+                fnc2min += cvx.sum(dispatch * tech_dic['var_cost'])
+            fnc2min += capacity * tech_dic['fixed_cost']  * num_time_periods
         
         #----------------------------------------------------------------------
         # Transmission  or concerion (directional)
@@ -320,12 +304,12 @@ def core_model(case_dic, tech_list):
             else:
                 efficiency = 1.0
 
-            node_balance[node] += dispatch
-            node_balance[node_aux] += dispatch/efficiency # need more in than out            
+            node_balance[node_to] += dispatch
+            node_balance[node_from] += - dispatch/efficiency # need more in than out            
 
             if 'var_cost' in tech_dic:
-                fnc2min += cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
-            fnc2min += capacity * tech_dic['fixed_cost']
+                fnc2min += cvx.sum(dispatch * tech_dic['var_cost'])
+            fnc2min += capacity * tech_dic['fixed_cost'] * num_time_periods
         
         #----------------------------------------------------------------------
         # Bidirectional Transmission (directional)
@@ -349,22 +333,22 @@ def core_model(case_dic, tech_list):
                                         
             capacity_dic[tech_name] = capacity
             dispatch_dic[tech_name] = dispatch
-            dispatch_aux_dic[tech_name] = dispatch_reverse
+            dispatch_dic[tech_name+' reverse'] = dispatch_reverse
             
             if 'efficiency' in tech_dic:
                 efficiency = tech_dic['efficiency']
             else:
                 efficiency = 1.0
 
-            node_balance[node] += dispatch
-            node_balance[node_aux] += dispatch_reverse
-            node_balance[node] += - dispatch_reverse/efficiency # need more in than out            
-            node_balance[node_aux] += - dispatch/efficiency # need more in than out            
+            node_balance[node_to] += dispatch
+            node_balance[node_from] += - dispatch/efficiency # need more in than out            
+            node_balance[node_from] += dispatch_reverse
+            node_balance[node_to] += -dispatch_reverse/efficiency # need more in than out            
                     
             if 'var_cost' in tech_dic:
-                fnc2min += cvx.sum(dispatch * tech_dic['var_cost'])/num_time_periods
-                fnc2min += cvx.sum(dispatch_reverse * tech_dic['var_cost'])/num_time_periods
-            fnc2min += capacity * tech_dic['fixed_cost']
+                fnc2min += cvx.sum(dispatch * tech_dic['var_cost'])
+                fnc2min += cvx.sum(dispatch_reverse * tech_dic['var_cost'])
+            fnc2min += capacity * tech_dic['fixed_cost'] * num_time_periods
 
     # end of loop to build up minimization function and constraints 
     
@@ -377,7 +361,7 @@ def core_model(case_dic, tech_list):
         
     #%%======================================================================
     # Now solve the problem
-    
+
     fnc2min_scaled = case_dic['numerics_scaling']*fnc2min
     obj = cvx.Minimize(fnc2min_scaled)
     prob = cvx.Problem(obj, constraints)
