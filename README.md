@@ -1,3 +1,6 @@
+# NOT CURRENT VERSION
+# Current version:  https://github.com/carnegie/MEM
+#
 # MEM = Macro Energy Model
 #
 # A collaborative project hosted by Carnegie Institution for Science.
