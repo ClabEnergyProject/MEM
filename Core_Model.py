@@ -181,7 +181,6 @@ def core_model(case_dic, tech_list):
         
         elif tech_type == 'fixed_generator':
             capacity = cvx.Variable(1)
-            dispatch = cvx.Variable(num_time_periods) 
             constraints += [ capacity >= 0 ]
             constraint_list += [tech_name + ' capacity_ge_0']
             if 'series' in tech_dic:
@@ -191,7 +190,6 @@ def core_model(case_dic, tech_list):
                 
             capacity_dic[tech_name] = capacity
             
-            dispatch_dic[tech_name] = dispatch
             node_balance[node_to] += dispatch
             fnc2min += capacity * tech_dic['fixed_cost'] * num_time_periods
 
